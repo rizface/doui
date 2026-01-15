@@ -44,6 +44,7 @@ func (v *LogsView) SetContainer(containerID, containerName string) {
 	v.containerID = containerID
 	v.containerName = containerName
 	v.lines = []string{}
+	v.ready = false // Reset ready so View() shows loading state until StartStreaming is called
 }
 
 // StartStreaming starts streaming logs
@@ -121,7 +122,11 @@ func (v *LogsView) View() string {
 	var b strings.Builder
 
 	// Header
-	title := fmt.Sprintf("Logs: %s (%s)", v.containerName, v.containerID[:12])
+	shortID := v.containerID
+	if len(shortID) > 12 {
+		shortID = shortID[:12]
+	}
+	title := fmt.Sprintf("Logs: %s (%s)", v.containerName, shortID)
 	b.WriteString(styles.TitleStyle.Render(title))
 	b.WriteString("\n")
 
