@@ -87,7 +87,11 @@ func (v *StatsView) View() string {
 	var b strings.Builder
 
 	// Header
-	title := fmt.Sprintf("Stats: %s (%s)", v.containerName, v.containerID[:12])
+	shortID := v.containerID
+	if len(shortID) > 12 {
+		shortID = shortID[:12]
+	}
+	title := fmt.Sprintf("Stats: %s (%s)", v.containerName, shortID)
 	b.WriteString(styles.TitleStyle.Render(title))
 	b.WriteString("\n")
 	b.WriteString(styles.SubtitleStyle.Render(fmt.Sprintf("Updated: %s", v.stats.Timestamp.Format(time.RFC3339))))
