@@ -1,3 +1,4 @@
+![image.png](image.png)
 # doui - Docker Terminal UI
 
 A beautiful and responsive Terminal User Interface (TUI) for managing Docker containers, images, and groups.
