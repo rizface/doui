@@ -40,6 +40,7 @@ func (v *StatsView) SetContainer(containerID, containerName string) {
 	v.containerName = containerName
 	v.stats = nil
 	v.history = []models.ContainerStats{}
+	v.ready = false // Reset ready so View() shows loading state until StartStreaming is called
 }
 
 // StartStreaming starts streaming stats

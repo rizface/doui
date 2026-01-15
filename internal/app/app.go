@@ -1477,14 +1477,16 @@ func removeContainerFromGroup(gm *config.GroupManager, groupID, containerID stri
 }
 
 func startLogStreaming(client *docker.Client, logsView *views.LogsView, container *models.Container) tea.Cmd {
+	// Set container synchronously to reset the view state before the async Cmd runs
+	// This prevents race conditions where View() is called with stale data
+	logsView.SetContainer(container.ID, container.Name)
+
 	return func() tea.Msg {
 		if client == nil {
 			return nil
 		}
 
 		ctx := context.Background()
-		logsView.SetContainer(container.ID, container.Name)
-
 		logsChan, errorChan := client.StreamLogs(ctx, container.ID, true, time.Time{}, "100")
 		logsView.StartStreaming(logsChan, errorChan)
 
@@ -1511,14 +1513,16 @@ func waitForLogEntry(logsChan <-chan docker.LogEntry, errorChan <-chan error) te
 }
 
 func startStatsStreaming(client *docker.Client, statsView *views.StatsView, container *models.Container) tea.Cmd {
+	// Set container synchronously to reset the view state before the async Cmd runs
+	// This prevents race conditions where View() is called with stale data
+	statsView.SetContainer(container.ID, container.Name)
+
 	return func() tea.Msg {
 		if client == nil {
 			return nil
 		}
 
 		ctx := context.Background()
-		statsView.SetContainer(container.ID, container.Name)
-
 		statsChan, errorChan := client.StreamStats(ctx, container.ID)
 		statsView.StartStreaming(statsChan, errorChan)
 
