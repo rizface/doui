@@ -170,10 +170,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Global keybindings
 		switch msg.String() {
 		case "ctrl+c", "q":
-			// Don't quit if in logs/stats/shell/about views, return to containers instead
+			// Don't quit if in logs/stats/shell/about views, return to previous view instead
 			if a.state.CurrentView == models.ViewLogs || a.state.CurrentView == models.ViewStats || a.state.CurrentView == models.ViewAbout {
-				a.state.CurrentView = models.ViewContainers
-				a.sidebar.SetCurrentView(models.ViewContainers)
+				a.state.CurrentView = a.state.PreviousView
+				a.sidebar.SetCurrentView(a.state.PreviousView)
 				return a, nil
 			}
 
@@ -207,6 +207,20 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				// Return to previous view without saving
 				a.pendingEnvContainer = nil
+				a.state.CurrentView = a.state.PreviousView
+				a.sidebar.SetCurrentView(a.state.PreviousView)
+				return a, nil
+			}
+
+			// Handle logs view - go back to previous view
+			if a.state.CurrentView == models.ViewLogs {
+				a.state.CurrentView = a.state.PreviousView
+				a.sidebar.SetCurrentView(a.state.PreviousView)
+				return a, nil
+			}
+
+			// Handle stats view - go back to previous view
+			if a.state.CurrentView == models.ViewStats {
 				a.state.CurrentView = a.state.PreviousView
 				a.sidebar.SetCurrentView(a.state.PreviousView)
 				return a, nil
