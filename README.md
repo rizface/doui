@@ -1,4 +1,3 @@
-![image.png](image.png)
 # doui - Docker Terminal UI
 
 A beautiful and responsive Terminal User Interface (TUI) for managing Docker containers, images, and groups.
@@ -44,11 +43,7 @@ A beautiful and responsive Terminal User Interface (TUI) for managing Docker con
 ## Installation
 
 ```bash
-# Build the application
-go build -o doui .
-
-# Run the application
-./doui
+go install github.com/rizface/doui@latest
 ```
 
 ## Usage
