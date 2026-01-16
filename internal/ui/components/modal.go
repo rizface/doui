@@ -141,8 +141,8 @@ func (m *Modal) Update(msg tea.Msg) (*Modal, tea.Cmd) {
 			} else if m.modalType == ModalForm {
 				// Only confirm if all required fields are filled
 				allFilled := true
-				for _, input := range m.inputs {
-					if input.Value() == "" {
+				for i, input := range m.inputs {
+					if m.requiredFields[i] && input.Value() == "" {
 						allFilled = false
 						break
 					}

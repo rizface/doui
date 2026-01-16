@@ -62,3 +62,22 @@ func (i *Image) GetTag() string {
 	}
 	return "latest"
 }
+
+// IsDangling returns true if the image has no tags (untagged image)
+func (i *Image) IsDangling() bool {
+	if len(i.RepoTags) == 0 {
+		return true
+	}
+	// Check if all tags are <none>:<none>
+	for _, tag := range i.RepoTags {
+		if tag != "<none>:<none>" {
+			return false
+		}
+	}
+	return true
+}
+
+// IsUnused returns true if the image is not used by any container
+func (i *Image) IsUnused() bool {
+	return i.Containers == 0
+}

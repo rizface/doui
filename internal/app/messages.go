@@ -63,6 +63,18 @@ type ImageRemovedMsg struct {
 	err     error
 }
 
+type ImagesBulkRemovedMsg struct {
+	count   int
+	failed  int
+	err     error
+}
+
+type ImagesPrunedMsg struct {
+	count       int
+	spaceFreed  int64
+	err         error
+}
+
 // Group operation messages
 type GroupStartedMsg struct {
 	groupID string
@@ -164,6 +176,10 @@ type ImagePullProgressMsg struct {
 	imageName string
 	status    string
 	progress  string
+	current   int64
+	total     int64
+	done      bool
+	err       error
 }
 
 type ImagePullCompletedMsg struct {

@@ -56,6 +56,11 @@ type App struct {
 
 	// Env var editing state
 	pendingEnvContainer *models.ContainerFullConfig
+
+	// Image pull progress state
+	pullProgressChan <-chan docker.PullProgress
+	pullImageName    string
+	pullProgress     string // Current progress display
 }
 
 // New creates a new application
@@ -589,6 +594,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+		case " ":
+			// Toggle selection in images view
+			if a.state.CurrentView == models.ViewImages {
+				a.imagesView.ToggleSelection()
+				return a, nil
+			}
+
 		case "d":
 			// Delete with confirmation
 			if a.state.CurrentView == models.ViewContainers {
@@ -603,6 +615,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return a, nil
 				}
 			} else if a.state.CurrentView == models.ViewImages {
+				// Check if we have selected images for bulk delete
+				if a.imagesView.HasSelection() {
+					selectedImages := a.imagesView.GetSelectedImages()
+
+					// Check if any selected image is in use
+					for _, img := range selectedImages {
+						if !img.IsUnused() {
+							a.errorMessage = fmt.Sprintf("Cannot delete: image '%s' is in use by %d container(s)", img.GetPrimaryTag(), img.Containers)
+							return a, clearStatus(3 * time.Second)
+						}
+					}
+
+					a.modal = components.NewConfirmModal(
+						"Delete Selected Images",
+						fmt.Sprintf("Are you sure you want to remove %d selected image(s)?", len(selectedImages)),
+					)
+					a.modal.SetSize(a.width, a.height)
+					a.pendingDeleteType = "images_bulk"
+					return a, nil
+				}
+
+				// Single image delete
 				if image := a.imagesView.GetSelectedImage(); image != nil {
 					a.modal = components.NewConfirmModal(
 						"Delete Image",
@@ -700,6 +734,18 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				)
 				a.modal.SetSize(a.width, a.height)
 				a.pendingDeleteType = "prune_volumes"
+				return a, nil
+			}
+
+		case "P":
+			// Prune dangling images
+			if a.state.CurrentView == models.ViewImages {
+				a.modal = components.NewConfirmModal(
+					"Prune Dangling Images",
+					"Remove all dangling (untagged) images?",
+				)
+				a.modal.SetSize(a.width, a.height)
+				a.pendingDeleteType = "prune_images"
 				return a, nil
 			}
 		}
@@ -819,6 +865,30 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			clearStatus(2*time.Second),
 		)
 
+	case ImagesBulkRemovedMsg:
+		if msg.failed > 0 {
+			a.errorMessage = fmt.Sprintf("Removed %d images, %d failed", msg.count-msg.failed, msg.failed)
+		} else {
+			a.statusMessage = fmt.Sprintf("Removed %d images", msg.count)
+		}
+		return a, tea.Batch(
+			fetchImages(a.docker),
+			clearStatus(2*time.Second),
+		)
+
+	case ImagesPrunedMsg:
+		if msg.err != nil {
+			a.errorMessage = fmt.Sprintf("Failed to prune images: %v", msg.err)
+		} else if msg.count == 0 {
+			a.statusMessage = "No dangling images to prune"
+		} else {
+			a.statusMessage = fmt.Sprintf("Pruned %d images, freed %s", msg.count, formatBytesShort(msg.spaceFreed))
+		}
+		return a, tea.Batch(
+			fetchImages(a.docker),
+			clearStatus(2*time.Second),
+		)
+
 	case GroupStartedMsg:
 		if msg.err != nil {
 			a.errorMessage = fmt.Sprintf("Failed to start group: %v", msg.err)
@@ -920,6 +990,10 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		)
 
 	case ImagePullCompletedMsg:
+		// Clean up pull state
+		a.pullProgressChan = nil
+		a.pullImageName = ""
+		a.pullProgress = ""
 		if msg.err != nil {
 			a.errorMessage = fmt.Sprintf("Failed to pull image: %v", msg.err)
 		} else {
@@ -929,6 +1003,40 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fetchImages(a.docker),
 			clearStatus(2*time.Second),
 		)
+
+	case ImagePullProgressMsg:
+		if msg.done {
+			// Pull completed or errored - clean up
+			a.pullProgressChan = nil
+			a.pullImageName = ""
+			a.pullProgress = ""
+			if msg.err != nil {
+				a.errorMessage = fmt.Sprintf("Failed to pull image: %v", msg.err)
+				return a, fetchImages(a.docker)
+			}
+			a.statusMessage = fmt.Sprintf("Image '%s' pulled successfully", msg.imageName)
+			return a, tea.Batch(
+				fetchImages(a.docker),
+				clearStatus(2*time.Second),
+			)
+		}
+
+		// Update progress display
+		if msg.progress != "" {
+			a.pullProgress = msg.progress
+		}
+		if msg.total > 0 {
+			percent := float64(msg.current) / float64(msg.total) * 100
+			a.statusMessage = fmt.Sprintf("Pulling '%s': %s (%.1f%%)", msg.imageName, msg.status, percent)
+		} else {
+			a.statusMessage = fmt.Sprintf("Pulling '%s': %s", msg.imageName, msg.status)
+		}
+
+		// Continue waiting for more progress
+		if a.pullProgressChan != nil {
+			return a, waitForPullProgress(msg.imageName, a.pullProgressChan)
+		}
+		return a, nil
 
 	case ContainerConnectedToNetworkMsg:
 		if msg.err != nil {
@@ -1130,6 +1238,9 @@ func (a *App) renderFooter() string {
 	// Status message
 	if a.errorMessage != "" {
 		footer += styles.ErrorStyle.Render("✗ " + a.errorMessage)
+	} else if a.pullProgressChan != nil && a.statusMessage != "" {
+		// Show progress indicator for ongoing pull
+		footer += styles.WarningStyle.Render("⟳ " + a.statusMessage)
 	} else if a.statusMessage != "" {
 		footer += styles.SuccessStyle.Render("✓ " + a.statusMessage)
 	} else {
@@ -1250,6 +1361,15 @@ func (a *App) handleModalConfirmed() (tea.Model, tea.Cmd) {
 	case "image":
 		return a, removeImage(a.docker, a.pendingDelete)
 
+	case "images_bulk":
+		// Get selected images and remove them
+		selectedImages := a.imagesView.GetSelectedImages()
+		a.imagesView.ClearSelection()
+		return a, removeImagesBulk(a.docker, selectedImages)
+
+	case "prune_images":
+		return a, pruneImages(a.docker)
+
 	case "group":
 		return a, deleteGroup(a.groupManager, a.pendingDelete)
 
@@ -1281,7 +1401,12 @@ func (a *App) handleModalConfirmed() (tea.Model, tea.Cmd) {
 		values := a.modal.GetInputValues()
 		if len(values) >= 1 && values[0] != "" {
 			imageName := values[0]
-			return a, pullImage(a.docker, imageName)
+			a.pullImageName = imageName
+			a.pullProgress = "Starting pull..."
+			a.statusMessage = fmt.Sprintf("Pulling '%s': Starting...", imageName)
+			progressChan, cmd := startImagePull(a.docker, imageName)
+			a.pullProgressChan = progressChan
+			return a, cmd
 		}
 
 	case "create_network":
@@ -1416,8 +1541,44 @@ func removeImage(client *docker.Client, imageID string) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		err := client.RemoveImage(ctx, imageID, false)
+		err := client.RemoveImage(ctx, imageID, true)
 		return ImageRemovedMsg{imageID: imageID, err: err}
+	}
+}
+
+func removeImagesBulk(client *docker.Client, images []models.Image) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		var failed int
+		for _, img := range images {
+			// Use force=true since we've already validated none are in use by containers
+			// This handles parent/child image dependencies
+			err := client.RemoveImage(ctx, img.ID, true)
+			if err != nil {
+				failed++
+			}
+		}
+
+		return ImagesBulkRemovedMsg{
+			count:  len(images),
+			failed: failed,
+		}
+	}
+}
+
+func pruneImages(client *docker.Client) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		count, spaceFreed, err := client.PruneImages(ctx)
+		return ImagesPrunedMsg{
+			count:      count,
+			spaceFreed: spaceFreed,
+			err:        err,
+		}
 	}
 }
 
@@ -1707,14 +1868,31 @@ func restartComposeProject(client *docker.Client, projectName string) tea.Cmd {
 	}
 }
 
-// Image pull command
-func pullImage(client *docker.Client, imageName string) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
+// startImagePull starts an image pull with progress channel
+func startImagePull(client *docker.Client, imageName string) (<-chan docker.PullProgress, tea.Cmd) {
+	ctx := context.Background() // No timeout - let Docker handle it
+	progressChan := client.PullImageWithProgress(ctx, imageName)
 
-		err := client.PullImage(ctx, imageName)
-		return ImagePullCompletedMsg{imageName: imageName, err: err}
+	return progressChan, waitForPullProgress(imageName, progressChan)
+}
+
+// waitForPullProgress waits for the next progress update
+func waitForPullProgress(imageName string, progressChan <-chan docker.PullProgress) tea.Cmd {
+	return func() tea.Msg {
+		progress, ok := <-progressChan
+		if !ok {
+			return ImagePullCompletedMsg{imageName: imageName, err: nil}
+		}
+
+		return ImagePullProgressMsg{
+			imageName: imageName,
+			status:    progress.Status,
+			progress:  progress.Progress,
+			current:   progress.Current,
+			total:     progress.Total,
+			done:      progress.Done,
+			err:       progress.Error,
+		}
 	}
 }
 
@@ -1813,4 +1991,18 @@ func recreateContainer(client *docker.Client, containerID string, config *models
 			err:           err,
 		}
 	}
+}
+
+// formatBytesShort formats bytes to human-readable format
+func formatBytesShort(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
