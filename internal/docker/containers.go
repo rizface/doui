@@ -122,68 +122,6 @@ func (c *Client) RemoveContainer(ctx context.Context, containerID string, force 
 	return nil
 }
 
-// GetContainer gets detailed information about a container
-func (c *Client) GetContainer(ctx context.Context, containerID string) (*models.Container, error) {
-	inspect, err := c.cli.ContainerInspect(ctx, containerID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to inspect container %s: %w", containerID, err)
-	}
-
-	// Extract ports
-	ports := make([]models.PortMapping, 0)
-	for port, bindings := range inspect.NetworkSettings.Ports {
-		privatePort := port.Int()
-		portType := port.Proto()
-
-		if len(bindings) > 0 {
-			for _, binding := range bindings {
-				publicPort := 0
-				if binding.HostPort != "" {
-					fmt.Sscanf(binding.HostPort, "%d", &publicPort)
-				}
-				ports = append(ports, models.PortMapping{
-					PrivatePort: privatePort,
-					PublicPort:  publicPort,
-					Type:        portType,
-					IP:          binding.HostIP,
-				})
-			}
-		} else {
-			ports = append(ports, models.PortMapping{
-				PrivatePort: privatePort,
-				PublicPort:  0,
-				Type:        portType,
-				IP:          "",
-			})
-		}
-	}
-
-	// Extract networks
-	networks := make([]string, 0, len(inspect.NetworkSettings.Networks))
-	for name := range inspect.NetworkSettings.Networks {
-		networks = append(networks, name)
-	}
-
-	// Parse created time
-	created, err := time.Parse(time.RFC3339Nano, inspect.Created)
-	if err != nil {
-		created = time.Now()
-	}
-
-	return &models.Container{
-		ID:       inspect.ID,
-		ShortID:  inspect.ID[:12],
-		Name:     strings.TrimPrefix(inspect.Name, "/"),
-		Image:    inspect.Config.Image,
-		Status:   inspect.State.Status,
-		State:    inspect.State.Status,
-		Created:  created,
-		Ports:    ports,
-		Networks: networks,
-		Labels:   inspect.Config.Labels,
-	}, nil
-}
-
 // InspectContainerFull returns the full container configuration needed for recreation
 func (c *Client) InspectContainerFull(ctx context.Context, containerID string) (*models.ContainerFullConfig, error) {
 	inspect, err := c.cli.ContainerInspect(ctx, containerID)

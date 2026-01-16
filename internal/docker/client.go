@@ -42,8 +42,3 @@ func (c *Client) Close() error {
 	}
 	return nil
 }
-
-// GetRawClient returns the underlying Docker client for advanced usage
-func (c *Client) GetRawClient() *client.Client {
-	return c.cli
-}

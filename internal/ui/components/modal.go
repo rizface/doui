@@ -15,7 +15,6 @@ type ModalType int
 const (
 	ModalConfirm ModalType = iota
 	ModalForm
-	ModalInfo
 )
 
 // Modal represents a modal dialog
