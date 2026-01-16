@@ -61,6 +61,12 @@ type App struct {
 	pullProgressChan <-chan docker.PullProgress
 	pullImageName    string
 	pullProgress     string // Current progress display
+
+	// Container rebuild state (track by name since ID changes)
+	rebuildingContainerName string
+
+	// Pending selection after container refresh (used after rebuild)
+	pendingSelectContainerID string
 }
 
 // New creates a new application
@@ -146,14 +152,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 
-		// If any view is currently filtering, skip command handling and let the view handle all input
+		// If any view is currently filtering or editing, skip command handling and let the view handle all input
 		if (a.state.CurrentView == models.ViewContainers && a.containersView.IsFiltering()) ||
 		   (a.state.CurrentView == models.ViewImages && a.imagesView.IsFiltering()) ||
 		   (a.state.CurrentView == models.ViewGroups && a.groupsView.IsFiltering()) ||
 		   (a.state.CurrentView == models.ViewVolumes && a.volumesView.IsFiltering()) ||
 		   (a.state.CurrentView == models.ViewCompose && a.composeView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewNetworks && a.networksView.IsFiltering()) {
-			// Delegate directly to the view to handle filter input
+		   (a.state.CurrentView == models.ViewNetworks && a.networksView.IsFiltering()) ||
+		   (a.state.CurrentView == models.ViewEnvVars && a.envVarsView.IsEditing()) {
+			// Delegate directly to the view to handle input
 			var cmd tea.Cmd
 			switch a.state.CurrentView {
 			case models.ViewContainers:
@@ -168,6 +175,8 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.composeView, cmd = a.composeView.Update(msg)
 			case models.ViewNetworks:
 				a.networksView, cmd = a.networksView.Update(msg)
+			case models.ViewEnvVars:
+				a.envVarsView, cmd = a.envVarsView.Update(msg)
 			}
 			return a, cmd
 		}
@@ -389,6 +398,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Restart container (in containers view, group tab, compose services/containers, or networks containers tab)
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot restart: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					return a, restartContainer(a.docker, container.ID)
 				}
 			} else if a.state.CurrentView == models.ViewGroups && a.groupsView.GetCurrentTab() == models.GroupsContainersTab {
@@ -417,6 +431,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot start: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					return a, startContainer(a.docker, container.ID)
 				}
 			} else if a.state.CurrentView == models.ViewGroups && a.groupsView.GetCurrentTab() == models.GroupsListTab {
@@ -450,6 +469,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "x":
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot stop: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					return a, stopContainer(a.docker, container.ID)
 				}
 			} else if a.state.CurrentView == models.ViewGroups && a.groupsView.GetCurrentTab() == models.GroupsListTab {
@@ -484,6 +508,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// View logs (containers view, group tab, or compose services/containers)
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot view logs: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					a.state.PreviousView = a.state.CurrentView
 					a.state.CurrentView = models.ViewLogs
 					a.state.SelectedContainer = container
@@ -516,6 +545,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// View stats (containers view, group tab, or compose services/containers)
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot view stats: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					a.state.PreviousView = a.state.CurrentView
 					a.state.CurrentView = models.ViewStats
 					a.state.SelectedContainer = container
@@ -548,6 +582,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Enter shell (containers view, group tab, or compose services/containers)
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot enter shell: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					return a, execShell(container.ID, container.Name)
 				}
 			} else if a.state.CurrentView == models.ViewGroups && a.groupsView.GetCurrentTab() == models.GroupsContainersTab {
@@ -568,6 +607,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// View/Edit environment variables (containers view, group tab, compose, or networks)
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot edit env vars: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					return a, loadContainerConfig(a.docker, container.ID)
 				}
 			} else if a.state.CurrentView == models.ViewGroups && a.groupsView.GetCurrentTab() == models.GroupsContainersTab {
@@ -590,6 +634,13 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if a.pendingEnvContainer != nil {
 					// Update env vars in pending config
 					a.pendingEnvContainer.Env = a.envVarsView.GetEnvVars()
+					// Track rebuilding state to block operations and show status
+					a.rebuildingContainerName = a.pendingEnvContainer.Name
+					a.containersView.SetRebuilding(a.pendingEnvContainer.Name)
+					// Switch to containers view immediately so user can see the rebuilding status
+					a.state.CurrentView = models.ViewContainers
+					a.sidebar.SetCurrentView(models.ViewContainers)
+					a.statusMessage = fmt.Sprintf("Rebuilding container '%s'...", a.pendingEnvContainer.Name)
 					return a, recreateContainer(a.docker, a.state.SelectedContainer.ID, a.pendingEnvContainer)
 				}
 			}
@@ -605,6 +656,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Delete with confirmation
 			if a.state.CurrentView == models.ViewContainers {
 				if container := a.containersView.GetSelectedContainer(); container != nil {
+					// Block if container is being rebuilt
+					if a.containersView.IsRebuilding(container.Name) {
+						a.errorMessage = "Cannot delete: container is being rebuilt"
+						return a, clearStatus(2 * time.Second)
+					}
 					a.modal = components.NewConfirmModal(
 						"Delete Container",
 						fmt.Sprintf("Are you sure you want to remove container '%s'?", container.Name),
@@ -767,6 +823,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.groupsView.SetAllContainers(msg.containers)
 		a.networksView.SetAllContainers(msg.containers)
 		a.volumesView.SetAllContainers(msg.containers)
+		// Note: rebuilding state is cleared in ContainerRecreatedMsg, not here
+		// to avoid auto-refresh clearing it prematurely
+
+		// Handle pending container selection (after rebuild, the new container ID needs to be selected)
+		if a.pendingSelectContainerID != "" {
+			a.containersView.SelectByID(a.pendingSelectContainerID)
+			a.pendingSelectContainerID = ""
+		}
 
 	case ImagesLoadedMsg:
 		a.imagesView.SetImages(msg.images)
@@ -848,6 +912,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Batch(
 			fetchContainers(a.docker),
 			clearStatus(2*time.Second),
+		)
+
+	case ContainerRemovedMsg:
+		if msg.err != nil {
+			a.errorMessage = fmt.Sprintf("Failed to remove container: %v", msg.err)
+			return a, tea.Batch(
+				fetchContainers(a.docker),
+				clearStatus(2*time.Second),
+			)
+		}
+		a.statusMessage = fmt.Sprintf("Container %s removed", msg.containerID[:12])
+		return a, tea.Batch(
+			fetchContainers(a.docker),
+			removeContainerFromAllGroups(a.groupManager, msg.containerID),
+			clearStatus(2*time.Second),
+		)
+
+	case ContainerRemovedFromAllGroupsMsg:
+		// Reload groups and refresh containers to ensure both lists are in sync
+		return a, tea.Batch(
+			loadGroups(a.groupManager),
+			fetchContainers(a.docker),
 		)
 
 	case ClearStatusMsg:
@@ -941,6 +1027,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fetchContainers(a.docker),
 			clearStatus(2*time.Second),
 		)
+
+	case ContainerIDReplacedMsg:
+		// Silently reload groups after container ID replacement
+		// Error is logged but not shown to user as this is an internal operation
+		if msg.err != nil {
+			// Log error but don't show to user - the container was still recreated successfully
+		}
+		return a, loadGroups(a.groupManager)
 
 	case VolumeRemovedMsg:
 		if msg.err != nil {
@@ -1105,17 +1199,28 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 
 	case ContainerRecreatedMsg:
+		// Clear rebuilding state
+		a.rebuildingContainerName = ""
+		a.containersView.ClearRebuilding()
+		a.pendingEnvContainer = nil
+
 		if msg.err != nil {
 			a.errorMessage = fmt.Sprintf("Failed to rebuild container: %v", msg.err)
-		} else {
-			a.statusMessage = fmt.Sprintf("Container '%s' rebuilt with new environment", msg.containerName)
+			a.state.CurrentView = models.ViewContainers
+			a.sidebar.SetCurrentView(models.ViewContainers)
+			return a, tea.Batch(
+				fetchContainers(a.docker),
+				clearStatus(3*time.Second),
+			)
 		}
-		// Return to containers view
-		a.pendingEnvContainer = nil
-		a.state.CurrentView = models.ViewContainers
-		a.sidebar.SetCurrentView(models.ViewContainers)
+		a.statusMessage = fmt.Sprintf("Container '%s' rebuilt with new environment", msg.containerName)
+		// Queue selection of the rebuilt container - will be applied after containers are fetched
+		// (can't select now because the list still has old data)
+		a.pendingSelectContainerID = msg.newID
+		// View is already containers (switched when Ctrl+S pressed)
 		return a, tea.Batch(
 			fetchContainers(a.docker),
+			replaceContainerIDInGroups(a.groupManager, msg.oldID, msg.newID),
 			clearStatus(3*time.Second),
 		)
 
@@ -1645,6 +1750,27 @@ func removeContainerFromGroup(gm *config.GroupManager, groupID, containerID stri
 		err := gm.RemoveContainerFromGroup(groupID, containerID)
 		return ContainerRemovedFromGroupMsg{
 			groupID:     groupID,
+			containerID: containerID,
+			err:         err,
+		}
+	}
+}
+
+func replaceContainerIDInGroups(gm *config.GroupManager, oldID, newID string) tea.Cmd {
+	return func() tea.Msg {
+		err := gm.ReplaceContainerID(oldID, newID)
+		return ContainerIDReplacedMsg{
+			oldID: oldID,
+			newID: newID,
+			err:   err,
+		}
+	}
+}
+
+func removeContainerFromAllGroups(gm *config.GroupManager, containerID string) tea.Cmd {
+	return func() tea.Msg {
+		err := gm.RemoveContainerFromAllGroups(containerID)
+		return ContainerRemovedFromAllGroupsMsg{
 			containerID: containerID,
 			err:         err,
 		}

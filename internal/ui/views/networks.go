@@ -216,28 +216,38 @@ func (v *NetworksView) SetSize(width, height int) {
 
 // GetSelectedNetwork returns the currently selected network
 func (v *NetworksView) GetSelectedNetwork() *models.Network {
-	if len(v.networks) == 0 || v.networksList.Index() >= len(v.networks) {
+	item := v.networksList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.networks[v.networksList.Index()]
+	if networkItem, ok := item.(NetworkItem); ok {
+		return &networkItem.network
+	}
+	return nil
 }
 
 // GetSelectedInNetworkContainer returns the selected container from the "In Network" tab
 func (v *NetworksView) GetSelectedInNetworkContainer() *models.Container {
-	containers := v.GetContainersInNetwork()
-	if len(containers) == 0 || v.containersInNetworkList.Index() >= len(containers) {
+	item := v.containersInNetworkList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &containers[v.containersInNetworkList.Index()]
+	if containerItem, ok := item.(ContainerItemForNetwork); ok {
+		return &containerItem.container
+	}
+	return nil
 }
 
 // GetSelectedAvailableContainer returns the selected container from the "Available" tab
 func (v *NetworksView) GetSelectedAvailableContainer() *models.Container {
-	containers := v.GetAvailableContainers()
-	if len(containers) == 0 || v.availableContainersList.Index() >= len(containers) {
+	item := v.availableContainersList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &containers[v.availableContainersList.Index()]
+	if containerItem, ok := item.(ContainerItemForNetwork); ok {
+		return &containerItem.container
+	}
+	return nil
 }
 
 // GetContainersInNetwork returns containers that are in the selected network
@@ -349,12 +359,12 @@ func (v *NetworksView) Update(msg tea.Msg) (*NetworksView, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "a", "left":
+		case "[", "left":
 			// Switch to previous tab
 			v.SwitchTab(-1)
 			return v, nil
 
-		case "d", "right":
+		case "]", "right":
 			// Switch to next tab
 			v.SwitchTab(+1)
 			return v, nil
@@ -485,7 +495,7 @@ func (v *NetworksView) GetHelpText() string {
 			styles.KeyStyle.Render("enter") + " select",
 			styles.KeyStyle.Render("n") + " new",
 			styles.KeyStyle.Render("d") + " delete",
-			styles.KeyStyle.Render("a/d") + " tabs",
+			styles.KeyStyle.Render("[/]") + " tabs",
 			styles.KeyStyle.Render("/") + " filter",
 		}
 
@@ -501,6 +511,7 @@ func (v *NetworksView) GetHelpText() string {
 			styles.KeyStyle.Render("t") + " stats",
 			styles.KeyStyle.Render("v") + " env",
 			styles.KeyStyle.Render("u") + " disconnect",
+			styles.KeyStyle.Render("[/]") + " tabs",
 			styles.KeyStyle.Render("/") + " filter",
 		}
 
@@ -508,7 +519,7 @@ func (v *NetworksView) GetHelpText() string {
 		helps = []string{
 			styles.KeyStyle.Render("↑/↓") + " navigate",
 			styles.KeyStyle.Render("enter") + " connect",
-			styles.KeyStyle.Render("a/d") + " tabs",
+			styles.KeyStyle.Render("[/]") + " tabs",
 			styles.KeyStyle.Render("esc") + " back",
 			styles.KeyStyle.Render("/") + " filter",
 		}

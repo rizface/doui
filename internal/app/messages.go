@@ -108,6 +108,19 @@ type ContainerRemovedFromGroupMsg struct {
 	err         error
 }
 
+// Container ID replaced in groups (after container recreate)
+type ContainerIDReplacedMsg struct {
+	oldID string
+	newID string
+	err   error
+}
+
+// Container removed from all groups (after container delete)
+type ContainerRemovedFromAllGroupsMsg struct {
+	containerID string
+	err         error
+}
+
 // Stream messages
 type LogLineMsg struct {
 	entry docker.LogEntry

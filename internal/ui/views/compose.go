@@ -216,10 +216,14 @@ func (v *ComposeView) SetSize(width, height int) {
 
 // GetSelectedProject returns the currently selected project
 func (v *ComposeView) GetSelectedProject() *models.ComposeProject {
-	if len(v.projects) == 0 || v.projectsList.Index() >= len(v.projects) {
+	item := v.projectsList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.projects[v.projectsList.Index()]
+	if projectItem, ok := item.(ComposeProjectItem); ok {
+		return &projectItem.project
+	}
+	return nil
 }
 
 // GetSelectedService returns the currently selected service
@@ -227,10 +231,14 @@ func (v *ComposeView) GetSelectedService() *models.ComposeService {
 	if v.selectedProject == nil {
 		return nil
 	}
-	if len(v.selectedProject.Services) == 0 || v.servicesList.Index() >= len(v.selectedProject.Services) {
+	item := v.servicesList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.selectedProject.Services[v.servicesList.Index()]
+	if serviceItem, ok := item.(ComposeServiceItem); ok {
+		return &serviceItem.service
+	}
+	return nil
 }
 
 // GetSelectedContainer returns the currently selected container
@@ -239,10 +247,14 @@ func (v *ComposeView) GetSelectedService() *models.ComposeService {
 func (v *ComposeView) GetSelectedContainer() *models.Container {
 	if v.viewingContainers && v.selectedService != nil {
 		// We're viewing containers in a scaled service
-		if len(v.selectedService.Containers) == 0 || v.containersList.Index() >= len(v.selectedService.Containers) {
+		item := v.containersList.SelectedItem()
+		if item == nil {
 			return nil
 		}
-		return &v.selectedService.Containers[v.containersList.Index()]
+		if containerItem, ok := item.(ComposeContainerItem); ok {
+			return &containerItem.container
+		}
+		return nil
 	}
 
 	// We're viewing services - check if selected service has exactly 1 container

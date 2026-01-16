@@ -122,6 +122,26 @@ func (v *GroupsView) SetGroups(groups []models.Group) {
 	}
 
 	v.groupsList.SetItems(items)
+
+	// Refresh selectedGroup if one is selected (to get updated ContainerIDs)
+	if v.selectedGroup != nil {
+		found := false
+		for i := range groups {
+			if groups[i].ID == v.selectedGroup.ID {
+				v.selectedGroup = &groups[i]
+				found = true
+				break
+			}
+		}
+		// If group was deleted, clear selection
+		if !found {
+			v.selectedGroup = nil
+		}
+	}
+
+	// Update container lists with fresh group data
+	// This is safe because it uses the current allContainers
+	v.updateContainerLists()
 }
 
 // SetAllContainers updates the list of all containers
@@ -144,28 +164,38 @@ func (v *GroupsView) SetSize(width, height int) {
 
 // GetSelectedGroup returns the currently selected group
 func (v *GroupsView) GetSelectedGroup() *models.Group {
-	if len(v.groups) == 0 || v.groupsList.Index() >= len(v.groups) {
+	item := v.groupsList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.groups[v.groupsList.Index()]
+	if groupItem, ok := item.(GroupItem); ok {
+		return &groupItem.group
+	}
+	return nil
 }
 
 // GetSelectedInGroupContainer returns the selected container from the "In Group" tab
 func (v *GroupsView) GetSelectedInGroupContainer() *models.Container {
-	containers := v.GetContainersInGroup()
-	if len(containers) == 0 || v.containersInGroupList.Index() >= len(containers) {
+	item := v.containersInGroupList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &containers[v.containersInGroupList.Index()]
+	if containerItem, ok := item.(ContainerItemForGroup); ok {
+		return &containerItem.container
+	}
+	return nil
 }
 
 // GetSelectedAvailableContainer returns the selected container from the "Available" tab
 func (v *GroupsView) GetSelectedAvailableContainer() *models.Container {
-	containers := v.GetAvailableContainers()
-	if len(containers) == 0 || v.availableContainersList.Index() >= len(containers) {
+	item := v.availableContainersList.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &containers[v.availableContainersList.Index()]
+	if containerItem, ok := item.(ContainerItemForGroup); ok {
+		return &containerItem.container
+	}
+	return nil
 }
 
 // GetContainersInGroup returns containers that are in the selected group
@@ -279,12 +309,12 @@ func (v *GroupsView) Update(msg tea.Msg) (*GroupsView, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "a", "left":
+		case "[", "left":
 			// Switch to previous tab
 			v.SwitchTab(-1)
 			return v, nil
 
-		case "d", "right":
+		case "]", "right":
 			// Switch to next tab
 			v.SwitchTab(+1)
 			return v, nil
@@ -417,7 +447,7 @@ func (v *GroupsView) GetHelpText() string {
 			styles.KeyStyle.Render("s") + " start all",
 			styles.KeyStyle.Render("x") + " stop all",
 			styles.KeyStyle.Render("d") + " delete",
-			styles.KeyStyle.Render("a/d") + " tabs",
+			styles.KeyStyle.Render("[/]") + " tabs",
 			styles.KeyStyle.Render("/") + " filter",
 		}
 
@@ -433,6 +463,7 @@ func (v *GroupsView) GetHelpText() string {
 			styles.KeyStyle.Render("t") + " stats",
 			styles.KeyStyle.Render("v") + " env",
 			styles.KeyStyle.Render("u") + " unlink",
+			styles.KeyStyle.Render("[/]") + " tabs",
 			styles.KeyStyle.Render("/") + " filter",
 		}
 
@@ -440,7 +471,7 @@ func (v *GroupsView) GetHelpText() string {
 		helps = []string{
 			styles.KeyStyle.Render("↑/↓") + " navigate",
 			styles.KeyStyle.Render("enter") + " add",
-			styles.KeyStyle.Render("a/d") + " tabs",
+			styles.KeyStyle.Render("[/]") + " tabs",
 			styles.KeyStyle.Render("esc") + " back",
 			styles.KeyStyle.Render("/") + " filter",
 		}

@@ -150,6 +150,60 @@ func (m *GroupManager) RemoveContainerFromGroup(groupID, containerID string) err
 	return m.save()
 }
 
+// ReplaceContainerID replaces oldID with newID in all groups
+// This is used when a container is recreated (e.g., after env var changes)
+func (m *GroupManager) ReplaceContainerID(oldID, newID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	modified := false
+	for i := range m.config.Groups {
+		group := &m.config.Groups[i]
+		for j, id := range group.ContainerIDs {
+			if id == oldID {
+				group.ContainerIDs[j] = newID
+				group.Modified = time.Now()
+				modified = true
+				break // Container can only be in the group once
+			}
+		}
+	}
+
+	if modified {
+		return m.save()
+	}
+	return nil
+}
+
+// RemoveContainerFromAllGroups removes a container ID from all groups
+// This is used when a container is deleted
+func (m *GroupManager) RemoveContainerFromAllGroups(containerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	modified := false
+	for i := range m.config.Groups {
+		group := &m.config.Groups[i]
+		newContainerIDs := make([]string, 0, len(group.ContainerIDs))
+		for _, id := range group.ContainerIDs {
+			if id != containerID {
+				newContainerIDs = append(newContainerIDs, id)
+			} else {
+				modified = true
+			}
+		}
+		if len(newContainerIDs) != len(group.ContainerIDs) {
+			group.ContainerIDs = newContainerIDs
+			group.Modified = time.Now()
+		}
+	}
+
+	if modified {
+		return m.save()
+	}
+	return nil
+}
+
 // save persists the config to disk (caller must hold lock)
 func (m *GroupManager) save() error {
 	m.config.LastModified = time.Now()

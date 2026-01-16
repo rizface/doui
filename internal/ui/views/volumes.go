@@ -145,10 +145,14 @@ func (v *VolumesView) View() string {
 
 // GetSelectedVolume returns the currently selected volume
 func (v *VolumesView) GetSelectedVolume() *models.Volume {
-	if len(v.volumes) == 0 || v.list.Index() >= len(v.volumes) {
+	item := v.list.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.volumes[v.list.Index()]
+	if volumeItem, ok := item.(VolumeItem); ok {
+		return &volumeItem.volume
+	}
+	return nil
 }
 
 func (v *VolumesView) renderEmpty() string {
