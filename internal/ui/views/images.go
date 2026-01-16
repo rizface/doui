@@ -135,10 +135,14 @@ func (v *ImagesView) View() string {
 
 // GetSelectedImage returns the currently selected image
 func (v *ImagesView) GetSelectedImage() *models.Image {
-	if len(v.images) == 0 || v.list.Index() >= len(v.images) {
+	item := v.list.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.images[v.list.Index()]
+	if imageItem, ok := item.(ImageItem); ok {
+		return &imageItem.image
+	}
+	return nil
 }
 
 // ToggleSelection toggles selection of the current image

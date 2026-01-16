@@ -12,7 +12,8 @@ import (
 
 // ContainerItem implements list.Item for containers
 type ContainerItem struct {
-	container models.Container
+	container  models.Container
+	rebuilding bool
 }
 
 func (i ContainerItem) FilterValue() string {
@@ -20,11 +21,18 @@ func (i ContainerItem) FilterValue() string {
 }
 
 func (i ContainerItem) Title() string {
+	if i.rebuilding {
+		status := styles.WarningStyle.Render("rebuilding...")
+		return fmt.Sprintf("%s  %s", i.container.Name, status)
+	}
 	status := styles.GetStatusStyle(i.container.State).Render(i.container.State)
 	return fmt.Sprintf("%s  %s", i.container.Name, status)
 }
 
 func (i ContainerItem) Description() string {
+	if i.rebuilding {
+		return styles.SubtitleStyle.Render("Container is being rebuilt, please wait...")
+	}
 	return fmt.Sprintf("ID: %s | Image: %s | %s",
 		i.container.ShortID,
 		i.container.Image,
@@ -33,10 +41,11 @@ func (i ContainerItem) Description() string {
 
 // ContainersView displays the list of containers
 type ContainersView struct {
-	list       list.Model
-	containers []models.Container
-	width      int
-	height     int
+	list            list.Model
+	containers      []models.Container
+	width           int
+	height          int
+	rebuildingName  string // Name of container currently being rebuilt
 }
 
 // NewContainersView creates a new containers view
@@ -62,9 +71,43 @@ func (v *ContainersView) SetContainers(containers []models.Container) {
 
 	items := make([]list.Item, len(containers))
 	for i, c := range containers {
-		items[i] = ContainerItem{container: c}
+		rebuilding := v.rebuildingName != "" && c.Name == v.rebuildingName
+		items[i] = ContainerItem{container: c, rebuilding: rebuilding}
 	}
 
+	v.list.SetItems(items)
+}
+
+// SetRebuilding marks a container as being rebuilt
+func (v *ContainersView) SetRebuilding(containerName string) {
+	v.rebuildingName = containerName
+	// Refresh the list to show rebuilding status
+	v.rebuildList()
+}
+
+// ClearRebuilding clears the rebuilding state
+func (v *ContainersView) ClearRebuilding() {
+	v.rebuildingName = ""
+	v.rebuildList()
+}
+
+// IsRebuilding returns true if the given container is being rebuilt
+func (v *ContainersView) IsRebuilding(containerName string) bool {
+	return v.rebuildingName != "" && v.rebuildingName == containerName
+}
+
+// IsAnyRebuilding returns true if any container is being rebuilt
+func (v *ContainersView) IsAnyRebuilding() bool {
+	return v.rebuildingName != ""
+}
+
+// rebuildList rebuilds the list items with current state
+func (v *ContainersView) rebuildList() {
+	items := make([]list.Item, len(v.containers))
+	for i, c := range v.containers {
+		rebuilding := v.rebuildingName != "" && c.Name == v.rebuildingName
+		items[i] = ContainerItem{container: c, rebuilding: rebuilding}
+	}
 	v.list.SetItems(items)
 }
 
@@ -124,10 +167,26 @@ func (v *ContainersView) View() string {
 
 // GetSelectedContainer returns the currently selected container
 func (v *ContainersView) GetSelectedContainer() *models.Container {
-	if len(v.containers) == 0 || v.list.Index() >= len(v.containers) {
+	item := v.list.SelectedItem()
+	if item == nil {
 		return nil
 	}
-	return &v.containers[v.list.Index()]
+	if containerItem, ok := item.(ContainerItem); ok {
+		return &containerItem.container
+	}
+	return nil
+}
+
+// SelectByID selects a container by its ID
+// Returns true if the container was found and selected
+func (v *ContainersView) SelectByID(containerID string) bool {
+	for i, c := range v.containers {
+		if c.ID == containerID {
+			v.list.Select(i)
+			return true
+		}
+	}
+	return false
 }
 
 func (v *ContainersView) renderEmpty() string {
