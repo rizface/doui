@@ -19,6 +19,12 @@ A beautiful and responsive Terminal User Interface (TUI) for managing Docker con
 #### Image Management
 - **List Images**: View all images with tags, size, and usage info
 - **Remove Images**: Delete images with confirmation modal
+- **Bulk Selection**: Select multiple images with space bar for batch operations
+- **Bulk Delete**: Remove multiple selected images at once
+- **Pull Images**: Pull new images with real-time progress display
+- **Prune Images**: Remove all dangling (untagged) images
+- **Smart Markers**: Visual indicators for `[dangling]` and `[unused]` images
+- **Sorted List**: Tagged images first (alphabetically), then dangling (by date)
 - **Usage Tracking**: See which containers use each image
 - **Size Display**: Human-readable size formatting (MB/GB)
 
@@ -75,7 +81,10 @@ go install github.com/rizface/doui@latest
 
 ### Images View
 - `↑/↓` - Navigate list
-- `d` - **Remove image** (with confirmation)
+- `Space` - Toggle selection for bulk operations
+- `d` - **Remove image(s)** (with confirmation, works on selection or single)
+- `p` - **Pull image** (opens form, shows real-time progress)
+- `P` - **Prune dangling images** (removes all untagged images)
 - `/` - Filter/search images
 
 ### Groups View
@@ -149,6 +158,9 @@ doui/
 - ✅ **Container listing** with real-time auto-refresh
 - ✅ **Container operations** (start, stop, restart, delete with confirmation)
 - ✅ **Image listing** and removal (with confirmation modal)
+- ✅ **Image bulk operations** (select, bulk delete)
+- ✅ **Image pull with progress** (real-time progress display)
+- ✅ **Image pruning** (remove dangling images)
 - ✅ **Container groups** with persistent storage
 - ✅ **Group operations** (start/stop all containers in parallel)
 - ✅ **Group creation UI** with interactive form modal
@@ -180,8 +192,6 @@ doui/
 
 ### 🔧 Future Enhancements (Optional)
 - Add containers to existing groups via UI
-- Network and volume management
-- Docker Compose support
 - Image building from Dockerfile
 - Export/import group configurations
 - Custom themes and color schemes
