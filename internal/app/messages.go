@@ -8,9 +8,6 @@ import (
 
 // Message types for bubbletea
 
-// InitMsg is sent when the app is initialized
-type InitMsg struct{}
-
 // DockerClientReadyMsg is sent when Docker client is initialized
 type DockerClientReadyMsg struct {
 	client *docker.Client
@@ -90,10 +87,6 @@ type GroupCreatedMsg struct {
 	name string
 }
 
-type GroupDeletedMsg struct {
-	groupID string
-}
-
 // Container added to group
 type ContainerAddedToGroupMsg struct {
 	groupID     string
@@ -121,15 +114,6 @@ type ContainerRemovedFromAllGroupsMsg struct {
 	err         error
 }
 
-// Stream messages
-type LogLineMsg struct {
-	entry docker.LogEntry
-}
-
-type StatsUpdateMsg struct {
-	stats *models.ContainerStats
-}
-
 // UI messages
 type RefreshTickMsg struct{}
 
@@ -142,13 +126,6 @@ type StatusMsg struct {
 }
 
 type ClearStatusMsg struct{}
-
-// View switching messages
-type SwitchViewMsg struct {
-	view models.ViewType
-}
-
-type BackToPreviousViewMsg struct{}
 
 // Volume operation messages
 type VolumesLoadedMsg struct {
@@ -181,10 +158,6 @@ type ComposeProjectRestartedMsg struct {
 }
 
 // Image pull messages
-type ImagePullStartedMsg struct {
-	imageName string
-}
-
 type ImagePullProgressMsg struct {
 	imageName string
 	status    string

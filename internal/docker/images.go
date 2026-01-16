@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"time"
 
@@ -87,36 +86,6 @@ func (c *Client) RemoveImage(ctx context.Context, imageID string, force bool) er
 	return nil
 }
 
-// GetImage gets detailed information about an image
-func (c *Client) GetImage(ctx context.Context, imageID string) (*models.Image, error) {
-	inspect, _, err := c.cli.ImageInspectWithRaw(ctx, imageID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to inspect image %s: %w", imageID, err)
-	}
-
-	// Parse created time
-	created, err := time.Parse(time.RFC3339Nano, inspect.Created)
-	if err != nil {
-		created = time.Now()
-	}
-
-	shortID := inspect.ID
-	if len(shortID) > 12 {
-		shortID = shortID[7:19] // Remove sha256: prefix and get 12 chars
-	}
-
-	return &models.Image{
-		ID:          inspect.ID,
-		ShortID:     shortID,
-		RepoTags:    inspect.RepoTags,
-		RepoDigests: inspect.RepoDigests,
-		Created:     created,
-		Size:        inspect.Size,
-		VirtualSize: inspect.VirtualSize,
-		Labels:      inspect.Config.Labels,
-	}, nil
-}
-
 // PullProgress represents progress of an image pull operation
 type PullProgress struct {
 	Status   string
@@ -125,23 +94,6 @@ type PullProgress struct {
 	Total    int64
 	Done     bool
 	Error    error
-}
-
-// PullImage pulls an image from a registry (blocking, no progress)
-func (c *Client) PullImage(ctx context.Context, imageName string) error {
-	out, err := c.cli.ImagePull(ctx, imageName, image.PullOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to pull image %s: %w", imageName, err)
-	}
-	defer out.Close()
-
-	// Read all the output to ensure pull completes
-	_, err = io.Copy(io.Discard, out)
-	if err != nil {
-		return fmt.Errorf("failed to read pull output: %w", err)
-	}
-
-	return nil
 }
 
 // pullEvent represents a single event from Docker's image pull stream

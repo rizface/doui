@@ -55,42 +55,6 @@ func (c *Client) ListNetworks(ctx context.Context) ([]models.Network, error) {
 	return result, nil
 }
 
-// GetNetwork returns detailed information about a specific network
-func (c *Client) GetNetwork(ctx context.Context, networkID string) (*models.Network, error) {
-	net, err := c.cli.NetworkInspect(ctx, networkID, network.InspectOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to inspect network %s: %w", networkID, err)
-	}
-
-	// Extract container IDs
-	containerIDs := make([]string, 0, len(net.Containers))
-	for containerID := range net.Containers {
-		containerIDs = append(containerIDs, containerID)
-	}
-
-	// Extract IPAM config
-	ipam := models.NetworkIPAM{
-		Driver: net.IPAM.Driver,
-	}
-	if len(net.IPAM.Config) > 0 {
-		ipam.Subnet = net.IPAM.Config[0].Subnet
-		ipam.Gateway = net.IPAM.Config[0].Gateway
-	}
-
-	return &models.Network{
-		ID:         net.ID,
-		Name:       net.Name,
-		Driver:     net.Driver,
-		Scope:      net.Scope,
-		Internal:   net.Internal,
-		Attachable: net.Attachable,
-		Created:    net.Created,
-		Containers: containerIDs,
-		Labels:     net.Labels,
-		IPAM:       ipam,
-	}, nil
-}
-
 // ConnectContainer connects a container to a network
 func (c *Client) ConnectContainer(ctx context.Context, networkID, containerID string) error {
 	err := c.cli.NetworkConnect(ctx, networkID, containerID, nil)

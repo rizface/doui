@@ -5,7 +5,6 @@ type ViewType int
 
 const (
 	ViewContainers ViewType = iota
-	ViewContainerDetail
 	ViewImages
 	ViewGroups
 	ViewVolumes
@@ -13,7 +12,6 @@ const (
 	ViewNetworks
 	ViewLogs
 	ViewStats
-	ViewShell
 	ViewEnvVars
 	ViewAbout
 )
@@ -23,8 +21,6 @@ func (v ViewType) String() string {
 	switch v {
 	case ViewContainers:
 		return "Containers"
-	case ViewContainerDetail:
-		return "Container Detail"
 	case ViewImages:
 		return "Images"
 	case ViewGroups:
@@ -39,8 +35,6 @@ func (v ViewType) String() string {
 		return "Logs"
 	case ViewStats:
 		return "Stats"
-	case ViewShell:
-		return "Shell"
 	case ViewEnvVars:
 		return "Environment Variables"
 	case ViewAbout:
@@ -73,11 +67,6 @@ type AppState struct {
 	CurrentView       ViewType
 	PreviousView      ViewType
 	SelectedContainer *Container
-	SelectedImage     *Image
-	SelectedGroup     *Group
-	ShowHelp          bool
-	StatusMessage     string
-	ErrorMessage      string
 }
 
 // NewAppState creates a new application state with default values
@@ -85,6 +74,5 @@ func NewAppState() *AppState {
 	return &AppState{
 		CurrentView:  ViewContainers,
 		PreviousView: ViewContainers,
-		ShowHelp:     false,
 	}
 }

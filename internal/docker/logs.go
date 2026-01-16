@@ -75,32 +75,3 @@ func (c *Client) StreamLogs(ctx context.Context, containerID string, follow bool
 
 	return logsChan, errorChan
 }
-
-// GetLogs fetches a fixed number of log lines (non-streaming)
-func (c *Client) GetLogs(ctx context.Context, containerID string, tail string) ([]string, error) {
-	reader, err := c.cli.ContainerLogs(ctx, containerID, container.LogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Follow:     false,
-		Timestamps: true,
-		Tail:       tail,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get container logs: %w", err)
-	}
-	defer reader.Close()
-
-	var lines []string
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-
-	if err := scanner.Err(); err != nil && err != io.EOF {
-		return nil, fmt.Errorf("error reading logs: %w", err)
-	}
-
-	return lines, nil
-}
