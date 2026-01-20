@@ -12,17 +12,18 @@ import (
 
 // LogsView displays container logs
 type LogsView struct {
-	viewport     viewport.Model
-	lines        []string
-	follow       bool
-	maxLines     int
-	containerID  string
+	viewport      viewport.Model
+	lines         []string
+	follow        bool
+	maxLines      int
+	containerID   string
 	containerName string
-	logsChan     <-chan docker.LogEntry
-	errorChan    <-chan error
-	ready        bool
-	width        int
-	height       int
+	logsChan      <-chan docker.LogEntry
+	errorChan     <-chan error
+	ready         bool
+	width         int
+	height        int
+	mouseEnabled  bool // Track mouse state for text selection toggle
 }
 
 // NewLogsView creates a new logs view
@@ -31,11 +32,12 @@ func NewLogsView() *LogsView {
 	vp.Style = styles.BorderStyle
 
 	return &LogsView{
-		viewport: vp,
-		lines:    []string{},
-		follow:   true,
-		maxLines: 1000,
-		ready:    false,
+		viewport:     vp,
+		lines:        []string{},
+		follow:       true,
+		maxLines:     1000,
+		ready:        false,
+		mouseEnabled: true,
 	}
 }
 
@@ -44,7 +46,8 @@ func (v *LogsView) SetContainer(containerID, containerName string) {
 	v.containerID = containerID
 	v.containerName = containerName
 	v.lines = []string{}
-	v.ready = false // Reset ready so View() shows loading state until StartStreaming is called
+	v.ready = false        // Reset ready so View() shows loading state until StartStreaming is called
+	v.mouseEnabled = false // Default to select mode for easy text copying
 }
 
 // StartStreaming starts streaming logs
@@ -155,6 +158,16 @@ func (v *LogsView) GetHelpText() string {
 	}
 
 	return strings.Join(helps, styles.SeparatorStyle.String())
+}
+
+// IsMouseEnabled returns whether mouse mode is enabled
+func (v *LogsView) IsMouseEnabled() bool {
+	return v.mouseEnabled
+}
+
+// ResetMouseState resets mouse state to enabled (call when leaving view)
+func (v *LogsView) ResetMouseState() {
+	v.mouseEnabled = true
 }
 
 // waitForLogEntry returns a command that waits for the next log entry
