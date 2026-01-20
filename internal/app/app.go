@@ -25,8 +25,8 @@ type App struct {
 	ready  bool
 
 	// Services
-	docker        *docker.Client
-	groupManager  *config.GroupManager
+	docker       *docker.Client
+	groupManager *config.GroupManager
 
 	// UI Components
 	sidebar *components.Sidebar
@@ -154,12 +154,12 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// If any view is currently filtering or editing, skip command handling and let the view handle all input
 		if (a.state.CurrentView == models.ViewContainers && a.containersView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewImages && a.imagesView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewGroups && a.groupsView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewVolumes && a.volumesView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewCompose && a.composeView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewNetworks && a.networksView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewEnvVars && a.envVarsView.IsEditing()) {
+			(a.state.CurrentView == models.ViewImages && a.imagesView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewGroups && a.groupsView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewVolumes && a.volumesView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewCompose && a.composeView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewNetworks && a.networksView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewEnvVars && a.envVarsView.IsEditing()) {
 			// Delegate directly to the view to handle input
 			var cmd tea.Cmd
 			switch a.state.CurrentView {
@@ -186,9 +186,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q":
 			// Don't quit if in logs/stats/shell/about views, return to previous view instead
 			if a.state.CurrentView == models.ViewLogs || a.state.CurrentView == models.ViewStats || a.state.CurrentView == models.ViewAbout {
+				// Re-enable mouse if leaving logs view with mouse disabled
+				var cmd tea.Cmd
+				if a.state.CurrentView == models.ViewLogs && !a.logsView.IsMouseEnabled() {
+					a.logsView.ResetMouseState()
+					cmd = tea.EnableMouseCellMotion
+				}
 				a.state.CurrentView = a.state.PreviousView
 				a.sidebar.SetCurrentView(a.state.PreviousView)
-				return a, nil
+				return a, cmd
 			}
 
 			if a.docker != nil {
@@ -228,9 +234,15 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			// Handle logs view - go back to previous view
 			if a.state.CurrentView == models.ViewLogs {
+				// Re-enable mouse if it was disabled for text selection
+				var cmd tea.Cmd
+				if !a.logsView.IsMouseEnabled() {
+					a.logsView.ResetMouseState()
+					cmd = tea.EnableMouseCellMotion
+				}
 				a.state.CurrentView = a.state.PreviousView
 				a.sidebar.SetCurrentView(a.state.PreviousView)
-				return a, nil
+				return a, cmd
 			}
 
 			// Handle stats view - go back to previous view
@@ -301,24 +313,24 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "right":
 			// Cycle forward through tabs (only in main views, not logs/stats)
 			if a.state.CurrentView == models.ViewContainers ||
-			   a.state.CurrentView == models.ViewImages ||
-			   a.state.CurrentView == models.ViewGroups ||
-			   a.state.CurrentView == models.ViewVolumes ||
-			   a.state.CurrentView == models.ViewCompose ||
-			   a.state.CurrentView == models.ViewNetworks ||
-			   a.state.CurrentView == models.ViewAbout {
+				a.state.CurrentView == models.ViewImages ||
+				a.state.CurrentView == models.ViewGroups ||
+				a.state.CurrentView == models.ViewVolumes ||
+				a.state.CurrentView == models.ViewCompose ||
+				a.state.CurrentView == models.ViewNetworks ||
+				a.state.CurrentView == models.ViewAbout {
 				return a.cycleTabForward()
 			}
 
 		case "shift+tab", "left":
 			// Cycle backward through tabs (only in main views, not logs/stats)
 			if a.state.CurrentView == models.ViewContainers ||
-			   a.state.CurrentView == models.ViewImages ||
-			   a.state.CurrentView == models.ViewGroups ||
-			   a.state.CurrentView == models.ViewVolumes ||
-			   a.state.CurrentView == models.ViewCompose ||
-			   a.state.CurrentView == models.ViewNetworks ||
-			   a.state.CurrentView == models.ViewAbout {
+				a.state.CurrentView == models.ViewImages ||
+				a.state.CurrentView == models.ViewGroups ||
+				a.state.CurrentView == models.ViewVolumes ||
+				a.state.CurrentView == models.ViewCompose ||
+				a.state.CurrentView == models.ViewNetworks ||
+				a.state.CurrentView == models.ViewAbout {
 				return a.cycleTabBackward()
 			}
 
@@ -855,11 +867,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Skip refresh if currently filtering to avoid clearing filter input
 		if (a.state.CurrentView == models.ViewContainers && a.containersView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewImages && a.imagesView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewGroups && a.groupsView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewVolumes && a.volumesView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewCompose && a.composeView.IsFiltering()) ||
-		   (a.state.CurrentView == models.ViewNetworks && a.networksView.IsFiltering()) {
+			(a.state.CurrentView == models.ViewImages && a.imagesView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewGroups && a.groupsView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewVolumes && a.volumesView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewCompose && a.composeView.IsFiltering()) ||
+			(a.state.CurrentView == models.ViewNetworks && a.networksView.IsFiltering()) {
 			return a, tickRefresh()
 		}
 
@@ -1782,7 +1794,7 @@ func startLogStreaming(client *docker.Client, logsView *views.LogsView, containe
 	// This prevents race conditions where View() is called with stale data
 	logsView.SetContainer(container.ID, container.Name)
 
-	return func() tea.Msg {
+	streamCmd := func() tea.Msg {
 		if client == nil {
 			return nil
 		}
@@ -1794,6 +1806,9 @@ func startLogStreaming(client *docker.Client, logsView *views.LogsView, containe
 		// Return the first log wait command
 		return waitForLogEntry(logsChan, errorChan)()
 	}
+
+	// Disable mouse on enter for text selection, batch with stream command
+	return tea.Batch(tea.DisableMouse, streamCmd)
 }
 
 func waitForLogEntry(logsChan <-chan docker.LogEntry, errorChan <-chan error) tea.Cmd {
